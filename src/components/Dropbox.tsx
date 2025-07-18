@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FaFolderOpen, FaDropbox, FaGoogleDrive } from "react-icons/fa";
-import { FiArrowRight, FiDownload } from "react-icons/fi";
+import { FiArrowRight, FiDownload, FiRefreshCw } from "react-icons/fi";
 
 declare global {
   interface Window {
@@ -56,6 +56,7 @@ interface ConvertedFile {
   loading: boolean;
   converting: boolean;
   originalId: string;
+  error?: string;
 }
 
 export default function Dropbox() {
@@ -63,6 +64,7 @@ export default function Dropbox() {
   const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || "";
   const DROPBOX_APP_KEY = import.meta.env.VITE_DROPBOX_APP_KEY || "";
   const API_URL = import.meta.env.VITE_API_URL || "https://convertorbackend.onrender.com";
+  const CONVERSION_TIMEOUT = 120000; // Match backend's CONVERSION_TIMEOUT
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickerLoaded = useRef(false);
@@ -71,6 +73,9 @@ export default function Dropbox() {
   const [convertedFiles, setConvertedFiles] = useState<ConvertedFile[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  // Supported image formats for image-to-PDF conversion
+  const supportedImageToPdfFormats = ["jpg", "jpeg", "png"];
 
   // Load Google APIs and Dropbox SDK
   useEffect(() => {
@@ -100,7 +105,6 @@ export default function Dropbox() {
 
       const gisScript = document.createElement("script");
       gisScript.src = "https://accounts.google.com/gsi/client";
-
       gisScript.async = true;
       gisScript.onload = () => {
         console.log("Google Identity Services loaded");
@@ -142,7 +146,7 @@ export default function Dropbox() {
   // Format options configuration
   const formatOptions: FormatOptions = {
     image: {
-      image: ["BMP", "EPS", "GIF", "ICO", "JPG", "PNG", "SVG", "TGA", "TIFF", "WBMP", "WEBP"],
+      image: ["BMP", "EPS", "GIF", "ICO", "JPG", "PNG", "SVG", "TGA", "WBMP"], // Removed TIFF, WEBP
       compressor: ["JPG", "PNG", "SVG"],
       pdf: ["PDF"],
     },
@@ -166,6 +170,12 @@ export default function Dropbox() {
     document: ["DOCX", "PDF", "TXT", "RTF", "ODT"],
     archive: ["ZIP", "7Z"],
     ebook: ["EPUB", "MOBI", "PDF", "AZW3"],
+  };
+
+  // Validate image file for PDF conversion
+  const validateImageForPdf = (fileName: string): boolean => {
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    return supportedImageToPdfFormats.includes(ext);
   };
 
   // Trigger Google Drive Picker
@@ -262,6 +272,11 @@ export default function Dropbox() {
             const blob = await response.blob();
             const ext = doc.name.split(".").pop()?.toLowerCase() || "bin";
             const section = getFormatSection(ext);
+            if (section === "image" && !supportedImageToPdfFormats.includes(ext)) {
+              console.warn(`Unsupported image format for PDF conversion: ${ext}`);
+              setErrorMessage(`File ${doc.name} has an unsupported format for PDF conversion. Use JPG, JPEG, or PNG.`);
+              return null;
+            }
             return {
               file: new File([blob], doc.name, { type: blob.type }),
               showMenu: false,
@@ -298,6 +313,11 @@ export default function Dropbox() {
       const newFiles = Array.from(files).map((f) => {
         const ext = f.name.split(".").pop()?.toLowerCase() || "";
         const section = getFormatSection(ext);
+        if (section === "image" && !supportedImageToPdfFormats.includes(ext)) {
+          console.warn(`Unsupported image format for PDF conversion: ${ext}`);
+          setErrorMessage(`File ${f.name} has an unsupported format for PDF conversion. Use JPG, JPEG, or PNG.`);
+          return null;
+        }
         return {
           file: f,
           showMenu: false,
@@ -307,9 +327,14 @@ export default function Dropbox() {
           id: `${f.name}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
         };
       });
-      setSelectedFiles((prev) => [...prev, ...newFiles]);
+      const validFiles = newFiles.filter((f): f is FileItem => f !== null);
+      setSelectedFiles((prev) => [...prev, ...validFiles]);
       setConvertedFiles([]);
-      setErrorMessage(null);
+      if (validFiles.length < files.length) {
+        setErrorMessage("Some files were not added due to unsupported formats for PDF conversion.");
+      } else {
+        setErrorMessage(null);
+      }
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -326,7 +351,7 @@ export default function Dropbox() {
       extensions: [
         ".mp3", ".wav", ".aac", ".flac", ".ogg", ".opus", ".wma", ".aiff", ".m4v", ".mmf", ".3g2",
         ".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv", ".3gp", ".mpg", ".ogv",
-        ".png", ".jpg", ".jpeg", ".webp", ".svg", ".bmp", ".gif", ".ico", ".tga", ".tiff", ".wbmp",
+        ".png", ".jpg", ".jpeg", ".svg", ".bmp", ".gif", ".ico", ".tga", ".wbmp",
         ".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".html", ".ppt", ".pptx", ".xlsx",
         ".zip", ".7z",
         ".epub", ".mobi", ".azw3", ".fb2", ".lit", ".lrf", ".pdb", ".tcr",
@@ -344,6 +369,11 @@ export default function Dropbox() {
               const blob = await response.blob();
               const ext = f.name.split(".").pop()?.toLowerCase() || "";
               const section = getFormatSection(ext);
+              if (section === "image" && !supportedImageToPdfFormats.includes(ext)) {
+                console.warn(`Unsupported image format for PDF conversion: ${ext}`);
+                setErrorMessage(`File ${f.name} has an unsupported format for PDF conversion. Use JPG, JPEG, or PNG.`);
+                return null;
+              }
               return {
                 file: new File([blob], f.name, { type: blob.type }),
                 showMenu: false,
@@ -362,7 +392,11 @@ export default function Dropbox() {
         const validFiles = newFiles.filter((f): f is FileItem => f !== null);
         setSelectedFiles((prev) => [...prev, ...validFiles]);
         setConvertedFiles([]);
-        setErrorMessage(null);
+        if (validFiles.length < files.length) {
+          setErrorMessage("Some files were not added due to unsupported formats for PDF conversion.");
+        } else {
+          setErrorMessage(null);
+        }
       },
       error: (err: any) => {
         console.error("Dropbox picker error:", err);
@@ -383,6 +417,7 @@ export default function Dropbox() {
   // Remove a selected file
   const removeFile = (index: number) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setConvertedFiles((prev) => prev.filter((file) => file.originalId !== selectedFiles[index].id));
     setErrorMessage(null);
   };
 
@@ -402,6 +437,101 @@ export default function Dropbox() {
     setSelectedFiles(updated);
   };
 
+  // Retry conversion for a specific file
+  const handleRetry = async (index: number) => {
+    const fileItem = selectedFiles[index];
+    if (!fileItem) return;
+
+    const format = fileItem.selectedFormat.split(":");
+    const subSection = format[0];
+    const target = format[1];
+    if (!subSection || !target) {
+      setErrorMessage("Please select a format for the file.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("files", fileItem.file);
+    formData.append(
+      "formats",
+      JSON.stringify([{
+        name: fileItem.file.name,
+        target: target.toLowerCase(),
+        type: fileItem.section,
+        subSection,
+        id: fileItem.id,
+      }])
+    );
+
+    setConvertedFiles((prev) =>
+      prev.map((file) =>
+        file.originalId === fileItem.id ? { ...file, converting: true, error: undefined } : file
+      )
+    );
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort(new Error("Conversion request timed out after 120 seconds"));
+      }, CONVERSION_TIMEOUT);
+
+      const res = await fetch(`${API_URL}/api/convert`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || `Conversion failed with status ${res.status}`);
+      }
+
+      const data = await res.json();
+      console.log("Retry conversion response:", data);
+
+      const converted = await Promise.all(
+        data.files.map(async (file: { name: string; path: string }) => {
+          try {
+            console.log(`Fetching converted file: ${file.name} from ${API_URL}${file.path}`);
+            const fileRes = await fetch(`${API_URL}${file.path}`);
+            if (!fileRes.ok) {
+              throw new Error(`Failed to fetch converted file: ${file.name}, status: ${fileRes.status}`);
+            }
+            const blob = await fileRes.blob();
+            const url = window.URL.createObjectURL(blob);
+            return { name: file.name, url, loading: false, converting: false, originalId: fileItem.id };
+          } catch (err) {
+            console.error(`Error fetching file ${file.name}:`, err);
+            return { name: file.name, url: "", loading: false, converting: false, originalId: fileItem.id, error: err.message };
+          }
+        })
+      );
+
+      setConvertedFiles((prev) =>
+        prev.map((file) =>
+          file.originalId === fileItem.id ? converted[0] : file
+        )
+      );
+
+      if (converted[0].error) {
+        setErrorMessage(`Retry failed for ${fileItem.file.name}: ${converted[0].error}`);
+      } else {
+        setErrorMessage(null);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error during retry";
+      console.error("Retry conversion error:", msg);
+      setConvertedFiles((prev) =>
+        prev.map((file) =>
+          file.originalId === fileItem.id ? { ...file, converting: false, error: msg } : file
+        )
+      );
+      setErrorMessage(`Retry failed for ${fileItem.file.name}: ${msg}`);
+    }
+  };
+
   // Handle file conversion
   const handleConvert = async () => {
     if (isConverting) return;
@@ -417,6 +547,17 @@ export default function Dropbox() {
 
     if (selectedFiles.length > 5) {
       setErrorMessage("Maximum 5 files allowed.");
+      return;
+    }
+
+    // Validate image-to-PDF conversions
+    const invalidFiles = selectedFiles.filter(
+      (item) => item.section === "image" && item.selectedFormat === "pdf:PDF" && !validateImageForPdf(item.file.name)
+    );
+    if (invalidFiles.length > 0) {
+      setErrorMessage(
+        `The following files have unsupported formats for PDF conversion: ${invalidFiles.map((f) => f.file.name).join(", ")}. Use JPG, JPEG, or PNG.`
+      );
       return;
     }
 
@@ -445,6 +586,7 @@ export default function Dropbox() {
         loading: false,
         converting: true,
         originalId: format.id,
+        error: undefined,
       }))
     );
 
@@ -460,7 +602,7 @@ export default function Dropbox() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort(new Error("Conversion request timed out after 120 seconds"));
-      }, 160000);
+      }, CONVERSION_TIMEOUT);
 
       const res = await fetch(`${API_URL}/api/convert`, {
         method: "POST",
@@ -489,23 +631,28 @@ export default function Dropbox() {
             const blob = await fileRes.blob();
             const url = window.URL.createObjectURL(blob);
             const originalId = formats[index].id;
-            return { name: file.name, url, loading: false, converting: false, originalId };
+            return { name: file.name, url, loading: false, converting: false, originalId, error: undefined };
           } catch (err) {
             console.error(`Error fetching file ${file.name}:`, err);
-            return null;
+            return { name: file.name, url: "", loading: false, converting: false, originalId: formats[index].id, error: err.message };
           }
         })
       );
 
-      const validConverted = converted.filter((file): file is ConvertedFile => file !== null);
-      console.log("Converted files set:", validConverted);
-      setConvertedFiles(validConverted);
-      if (converted.some((file) => file === null)) {
-        setErrorMessage("Some files failed to convert or download. Please try again.");
+      const validConverted = converted.filter((file): file is ConvertedFile => file.url !== "");
+      setConvertedFiles(converted);
+      if (converted.some((file) => file.error)) {
+        setErrorMessage(
+          `Some files failed to convert or download: ${converted
+            .filter((file) => file.error)
+            .map((file) => file.name)
+            .join(", ")}. Click Retry to try again.`
+        );
       } else if (validConverted.length === 0) {
         setErrorMessage("No files were converted successfully. Check file formats and try again.");
       } else {
         console.log("Conversion successful, files:", validConverted);
+        setErrorMessage(null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error during conversion";
@@ -520,7 +667,7 @@ export default function Dropbox() {
           : `Conversion failed: ${msg}`
       );
       setConvertedFiles((prev) =>
-        prev.map((file) => ({ ...file, converting: false }))
+        prev.map((file) => ({ ...file, converting: false, error: msg }))
       );
     } finally {
       setIsConverting(false);
@@ -565,7 +712,7 @@ export default function Dropbox() {
               multiple
               onChange={handleLocalFileChange}
               style={{ display: "none" }}
-              accept=".mp3,.wav,.aac,.flac,.ogg,.opus,.wma,.aiff,.m4v,.mmf,.3g2,.mp4,.avi,.mov,.webm,.mkv,.flv,.wmv,.3gp,.mpg,.ogv,.png,.jpg,.jpeg,.webp,.svg,.bmp,.gif,.ico,.tga,.tiff,.wbmp,.pdf,.doc,.docx,.txt,.rtf,.odt,.html,.ppt,.pptx,.xlsx,.zip,.7z,.epub,.mobi,.azw3,.fb2,.lit,.lrf,.pdb,.tcr"
+              accept=".mp3,.wav,.aac,.flac,.ogg,.opus,.wma,.aiff,.m4v,.mmf,.3g2,.mp4,.avi,.mov,.webm,.mkv,.flv,.wmv,.3gp,.mpg,.ogv,.png,.jpg,.jpeg,.svg,.bmp,.gif,.ico,.tga,.wbmp,.pdf,.doc,.docx,.txt,.rtf,.odt,.html,.ppt,.pptx,.xlsx,.zip,.7z,.epub,.mobi,.azw3,.fb2,.lit,.lrf,.pdb,.tcr"
             />
             <FaDropbox
               onClick={handleDropboxUpload}
@@ -579,7 +726,7 @@ export default function Dropbox() {
             />
           </div>
           <div className="dropboxfoot mt-3 text-sm text-gray-400">
-            100 MB maximum file size and up to 5 files.
+            100 MB maximum file size and up to 5 files. For image to PDF, use JPG, JPEG, or PNG.
           </div>
           {errorMessage && (
             <div className="mt-4 text-red-500 text-sm font-medium">{errorMessage}</div>
@@ -618,20 +765,32 @@ export default function Dropbox() {
                     </div>
                     <div className="flex items-center gap-2">
                       {convertedFile && !convertedFile.converting && (
-                        <button
-                          onClick={() =>
-                            handleDownload(
-                              convertedFile.url,
-                              convertedFile.name,
-                              convertedFiles.findIndex((file) => file.originalId === item.id)
-                            )
-                          }
-                          disabled={convertedFile.loading}
-                          className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-1 rounded-md text-[14px] font-semibold hover:bg-yellow-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <FiDownload className="text-[16px]" />
-                          {convertedFile.loading ? "Downloading..." : "Download"}
-                        </button>
+                        <>
+                          {convertedFile.error ? (
+                            <button
+                              onClick={() => handleRetry(index)}
+                              className="flex items-center gap-2 bg-blue-500 text-white px-4 py-1 rounded-md text-[14px] font-semibold hover:bg-blue-600 transition"
+                            >
+                              <FiRefreshCw className="text-[16px]" />
+                              Retry
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                handleDownload(
+                                  convertedFile.url,
+                                  convertedFile.name,
+                                  convertedFiles.findIndex((file) => file.originalId === item.id)
+                                )
+                              }
+                              disabled={convertedFile.loading}
+                              className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-1 rounded-md text-[14px] font-semibold hover:bg-yellow-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <FiDownload className="text-[16px]" />
+                              {convertedFile.loading ? "Downloading..." : "Download"}
+                            </button>
+                          )}
+                        </>
                       )}
                       <button
                         className="text-gray-400 hover:text-red-500 transition text-xl"
@@ -642,6 +801,9 @@ export default function Dropbox() {
                       </button>
                     </div>
                   </div>
+                  {convertedFile?.error && (
+                    <div className="mt-2 text-red-500 text-xs">{convertedFile.error}</div>
+                  )}
                   {item.showMenu && (
                     <div className="absolute top-full mt-2 right-12 bg-[#1f1f1f] text-white rounded-md p-4 w-[340px] shadow-xl text-sm font-medium z-50 flex">
                       <div className="flex flex-col border-r border-gray-700 pr-3 min-w-[100px]">
@@ -686,7 +848,7 @@ export default function Dropbox() {
       </div>
       <div className="flex flex-col items-center justify-center space-y-2 rounded-md">
         <h1 className="text-gray-500 text-center mt-4">
-          Make sure you have uploaded valid files otherwise conversion will not be correct
+          Make sure you have uploaded valid files. For image to PDF, use JPG, JPEG, or PNG.
         </h1>
         <button
           onClick={handleConvert}
