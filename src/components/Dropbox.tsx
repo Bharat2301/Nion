@@ -54,7 +54,7 @@ interface ConvertedFile {
   name: string;
   url: string;
   loading: boolean;
-  converting: boolean; // Added to track conversion state
+  converting: boolean;
   originalId: string;
 }
 
@@ -62,7 +62,7 @@ export default function Dropbox() {
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
   const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || "";
   const DROPBOX_APP_KEY = import.meta.env.VITE_DROPBOX_APP_KEY || "";
-  const API_URL = import.meta.env.VITE_API_URL || "https://fileconverter-backend.onrender.com";
+  const API_URL = import.meta.env.VITE_API_URL || "https://convertorbackend.onrender.com";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickerLoaded = useRef(false);
@@ -75,7 +75,6 @@ export default function Dropbox() {
   // Load Google APIs and Dropbox SDK
   useEffect(() => {
     const loadGapiAndGis = () => {
-      // Load Google API client
       const gapiScript = document.createElement("script");
       gapiScript.src = "https://apis.google.com/js/api.js";
       gapiScript.async = true;
@@ -99,9 +98,9 @@ export default function Dropbox() {
       };
       document.body.appendChild(gapiScript);
 
-      // Load Google Identity Services
       const gisScript = document.createElement("script");
       gisScript.src = "https://accounts.google.com/gsi/client";
+
       gisScript.async = true;
       gisScript.onload = () => {
         console.log("Google Identity Services loaded");
@@ -111,7 +110,6 @@ export default function Dropbox() {
       };
       document.body.appendChild(gisScript);
 
-      // Load Dropbox SDK
       const dropboxScript = document.createElement("script");
       dropboxScript.src = "https://www.dropbox.com/static/api/2/dropins.js";
       dropboxScript.id = "dropboxjs";
@@ -138,7 +136,7 @@ export default function Dropbox() {
     if (["mp4", "avi", "mov", "webm", "mkv", "flv", "wmv", "3gp", "mpg", "ogv"].includes(ext)) return "video";
     if (["zip", "7z"].includes(ext)) return "archive";
     if (["epub", "mobi", "azw3", "fb2", "lit", "lrf", "pdb", "tcr"].includes(ext)) return "ebook";
-    return "image"; // Default fallback
+    return "image";
   };
 
   // Format options configuration
@@ -149,7 +147,7 @@ export default function Dropbox() {
       pdf: ["PDF"],
     },
     pdfs: {
-      document: ["DOC", "DOCX", "HTML", "ODT", "PPT", "PPTX", "RTF", "TXT", "XLSX", "PDF"],
+      document: ["DOCX"],
       compressor: ["PDF"],
       ebook: ["AZW3", "EPUB", "FB2", "LIT", "LRF", "MOBI", "PDB", "TCR"],
       pdf_ebook: ["AZW3", "EPUB", "FB2", "LIT", "LRF", "MOBI", "PDB", "TCR"],
@@ -206,25 +204,25 @@ export default function Dropbox() {
 
   // Create Google Picker
   const createGooglePicker = (token: string) => {
-  if (pickerLoaded.current && window.google?.picker && typeof window.google.picker.PickerBuilder === "function") {
-    try {
-      const view = new window.google.picker.View(window.google.picker.ViewId.DOCS);
-      const picker = new window.google.picker.PickerBuilder()
-        .addView(view)
-        .setOAuthToken(token)
-        .setDeveloperKey(GOOGLE_API_KEY)
-        .setOrigin(window.location.origin) // Use dynamic origin
-        .setCallback((data: any) => handlePickerResponse(data, token))
-        .build();
-      picker.setVisible(true);
-    } catch (err) {
-      console.error("Failed to create Google Picker:", err);
-      setErrorMessage("Failed to initialize Google Picker. Please try again.");
+    if (pickerLoaded.current && window.google?.picker && typeof window.google.picker.PickerBuilder === "function") {
+      try {
+        const view = new window.google.picker.View(window.google.picker.ViewId.DOCS);
+        const picker = new window.google.picker.PickerBuilder()
+          .addView(view)
+          .setOAuthToken(token)
+          .setDeveloperKey(GOOGLE_API_KEY)
+          .setOrigin(window.location.origin)
+          .setCallback((data: any) => handlePickerResponse(data, token))
+          .build();
+        picker.setVisible(true);
+      } catch (err) {
+        console.error("Failed to create Google Picker:", err);
+        setErrorMessage("Failed to initialize Google Picker. Please try again.");
+      }
+    } else {
+      setErrorMessage("Google Picker API not loaded. Please try again.");
     }
-  } else {
-    setErrorMessage("Google Picker API not loaded. Please try again.");
-  }
-};
+  };
 
   // Handle Google Picker response
   const handlePickerResponse = async (data: any, token: string) => {
@@ -440,7 +438,6 @@ export default function Dropbox() {
       };
     });
 
-    // Initialize converting state for all files
     setConvertedFiles(
       formats.map((format) => ({
         name: format.name,
@@ -651,8 +648,7 @@ export default function Dropbox() {
                         {Object.keys(formatOptions[item.section]).map((subSection) => (
                           <button
                             key={subSection}
-                            className={`text-left px-2 py-1 rounded hover:bg-[#333] ${item.selectedSubSection === subSection ? "text-white font-bold" : "text-gray-400"
-                              }`}
+                            className={`text-left px-2 py-1 rounded hover:bg-[#333] ${item.selectedSubSection === subSection ? "text-white font-bold" : "text-gray-400"}`}
                             onClick={() => selectSubSection(index, subSection)}
                           >
                             {subSection.charAt(0).toUpperCase() + subSection.slice(1).replace("_", " ")}
@@ -695,8 +691,7 @@ export default function Dropbox() {
         <button
           onClick={handleConvert}
           disabled={isConverting || selectedFiles.length === 0}
-          className={`flex items-center gap-2 bg-red-400 text-white px-5 py-2 rounded-md text-[15px] font-semibold mt-2 hover:bg-red-500 transition ${isConverting || selectedFiles.length === 0 ? "opacity-50 cursor-not-allowed" : ""
-            }`}
+          className={`flex items-center gap-2 bg-red-400 text-white px-5 py-2 rounded-md text-[15px] font-semibold mt-2 hover:bg-red-500 transition ${isConverting || selectedFiles.length === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <FiArrowRight className="text-[16px]" />
           {isConverting ? "Converting..." : "Convert files"}
@@ -704,4 +699,4 @@ export default function Dropbox() {
       </div>
     </div>
   );
-}      
+}

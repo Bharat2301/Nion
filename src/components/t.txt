@@ -1,4 +1,4 @@
-i have frontend folder in that i have components folder in that i have Dropbox.tsx file 
+i have dropbox.tsx file 
 import React, { useEffect, useRef, useState } from "react";
 import { FaFolderOpen, FaDropbox, FaGoogleDrive } from "react-icons/fa";
 import { FiArrowRight, FiDownload } from "react-icons/fi";
@@ -17,8 +17,8 @@ interface FileItem {
   showMenu: boolean;
   section: keyof FormatOptions;
   selectedFormat: string;
-  source: string;
-  url: string;
+  source?: string;
+  url?: string;
   id: string;
   selectedSubSection?: string;
 }
@@ -55,7 +55,7 @@ interface ConvertedFile {
   name: string;
   url: string;
   loading: boolean;
-  converting: boolean;
+  converting: boolean; // Added to track conversion state
   originalId: string;
 }
 
@@ -63,7 +63,7 @@ export default function Dropbox() {
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
   const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || "";
   const DROPBOX_APP_KEY = import.meta.env.VITE_DROPBOX_APP_KEY || "";
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = import.meta.env.VITE_API_URL || "https://fileconverter-backend.onrender.com";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickerLoaded = useRef(false);
@@ -76,6 +76,7 @@ export default function Dropbox() {
   // Load Google APIs and Dropbox SDK
   useEffect(() => {
     const loadGapiAndGis = () => {
+      // Load Google API client
       const gapiScript = document.createElement("script");
       gapiScript.src = "https://apis.google.com/js/api.js";
       gapiScript.async = true;
@@ -90,7 +91,7 @@ export default function Dropbox() {
             console.log("Google API client initialized");
           } catch (err) {
             console.error("Failed to init gapi client:", err);
-            setErrorMessage("Failed to initialize Google API client. Please try again later.");
+            setErrorMessage("Failed to initialize Google API client.");
           }
         });
       };
@@ -99,6 +100,7 @@ export default function Dropbox() {
       };
       document.body.appendChild(gapiScript);
 
+      // Load Google Identity Services
       const gisScript = document.createElement("script");
       gisScript.src = "https://accounts.google.com/gsi/client";
       gisScript.async = true;
@@ -110,6 +112,7 @@ export default function Dropbox() {
       };
       document.body.appendChild(gisScript);
 
+      // Load Dropbox SDK
       const dropboxScript = document.createElement("script");
       dropboxScript.src = "https://www.dropbox.com/static/api/2/dropins.js";
       dropboxScript.id = "dropboxjs";
@@ -147,10 +150,10 @@ export default function Dropbox() {
       pdf: ["PDF"],
     },
     pdfs: {
-      document: ["DOCX", "TXT", "RTF", "ODT"],
+      document: ["DOC", "DOCX", "HTML", "ODT", "PPT", "PPTX", "RTF", "TXT", "XLSX", "PDF"],
       compressor: ["PDF"],
-      ebook: ["EPUB", "MOBI", "AZW3"],
-      pdf_ebook: ["EPUB", "MOBI", "AZW3"],
+      ebook: ["AZW3", "EPUB", "FB2", "LIT", "LRF", "MOBI", "PDB", "TCR"],
+      pdf_ebook: ["AZW3", "EPUB", "FB2", "LIT", "LRF", "MOBI", "PDB", "TCR"],
       pdf_to_image: ["JPG", "PNG", "GIF"],
     },
     audio: {
@@ -165,7 +168,7 @@ export default function Dropbox() {
     },
     document: ["DOCX", "PDF", "TXT", "RTF", "ODT"],
     archive: ["ZIP", "7Z"],
-    ebook: ["EPUB", "MOBI", "AZW3"],
+    ebook: ["EPUB", "MOBI", "PDF", "AZW3"],
   };
 
   // Trigger Google Drive Picker
@@ -204,25 +207,25 @@ export default function Dropbox() {
 
   // Create Google Picker
   const createGooglePicker = (token: string) => {
-    if (pickerLoaded.current && window.google?.picker && typeof window.google.picker.PickerBuilder === "function") {
-      try {
-        const view = new window.google.picker.View(window.google.picker.ViewId.DOCS);
-        const picker = new window.google.picker.PickerBuilder()
-          .addView(view)
-          .setOAuthToken(token)
-          .setDeveloperKey(GOOGLE_API_KEY)
-          .setOrigin(window.location.origin)
-          .setCallback((data: any) => handlePickerResponse(data, token))
-          .build();
-        picker.setVisible(true);
-      } catch (err) {
-        console.error("Failed to create Google Picker:", err);
-        setErrorMessage("Failed to initialize Google Picker. Please try again.");
-      }
-    } else {
-      setErrorMessage("Google Picker API not loaded. Please try again.");
+  if (pickerLoaded.current && window.google?.picker && typeof window.google.picker.PickerBuilder === "function") {
+    try {
+      const view = new window.google.picker.View(window.google.picker.ViewId.DOCS);
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(view)
+        .setOAuthToken(token)
+        .setDeveloperKey(GOOGLE_API_KEY)
+        .setOrigin(window.location.origin) // Use dynamic origin
+        .setCallback((data: any) => handlePickerResponse(data, token))
+        .build();
+      picker.setVisible(true);
+    } catch (err) {
+      console.error("Failed to create Google Picker:", err);
+      setErrorMessage("Failed to initialize Google Picker. Please try again.");
     }
-  };
+  } else {
+    setErrorMessage("Google Picker API not loaded. Please try again.");
+  }
+};
 
   // Handle Google Picker response
   const handlePickerResponse = async (data: any, token: string) => {
@@ -366,7 +369,7 @@ export default function Dropbox() {
       },
       error: (err: any) => {
         console.error("Dropbox picker error:", err);
-        setErrorMessage("Failed to load files from Dropbox. Please try again.");
+        setErrorMessage("Failed to load files from Dropbox.");
       },
     });
   };
@@ -438,6 +441,7 @@ export default function Dropbox() {
       };
     });
 
+    // Initialize converting state for all files
     setConvertedFiles(
       formats.map((format) => ({
         name: format.name,
@@ -460,7 +464,7 @@ export default function Dropbox() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort(new Error("Conversion request timed out after 120 seconds"));
-      }, 120000);
+      }, 160000);
 
       const res = await fetch(`${API_URL}/api/convert`, {
         method: "POST",
@@ -501,7 +505,7 @@ export default function Dropbox() {
       console.log("Converted files set:", validConverted);
       setConvertedFiles(validConverted);
       if (converted.some((file) => file === null)) {
-        setErrorMessage("Some files failed to convert or download. Please check file formats and try again.");
+        setErrorMessage("Some files failed to convert or download. Please try again.");
       } else if (validConverted.length === 0) {
         setErrorMessage("No files were converted successfully. Check file formats and try again.");
       } else {
@@ -627,7 +631,7 @@ export default function Dropbox() {
                             )
                           }
                           disabled={convertedFile.loading}
-                          className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-1 rounded-md text-[14pt] font-semibold hover:bg-yellow-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-1 rounded-md text-[14px] font-semibold hover:bg-yellow-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <FiDownload className="text-[16px]" />
                           {convertedFile.loading ? "Downloading..." : "Download"}
@@ -701,11 +705,11 @@ export default function Dropbox() {
       </div>
     </div>
   );
-}
+}      
 then i have .env file 
 VITE_GOOGLE_CLIENT_ID=866725812936-fvjl5btdg8d8s8mc03aihrvs3tmj3q6h.apps.googleusercontent.com
 VITE_GOOGLE_API_KEY=AIzaSyDtxORXGl-d3mMhG4TKBGS90scPCX7JGyM
 VITE_DROPBOX_APP_KEY=2434iawyecdjpxc
-VITE_API_URL=https://nion-rqsx.onrender.com
+VITE_API_URL=https://convertorbackend.onrender.com
 
-this is my frontend code 
+this is my frontened code 
